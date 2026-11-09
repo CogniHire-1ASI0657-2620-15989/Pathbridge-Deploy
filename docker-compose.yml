@@ -1,0 +1,17 @@
+gateway:
+  build: ../Api-Gateway
+
+identity-service:
+  build: ../Identity-Service
+
+job-discovery-service:
+  build: ../Job-Discovery-Service
+
+gap-analysis-service:
+  build: ../Gap-Analysis-Service
+
+learning-pathway-service:
+  build: ../Learning-Pathway-Service
+
+interview-coach-service:
+  build: ../Interview-Coach-Service
