@@ -1,17 +1,203 @@
-gateway:
-  build: ../Api-Gateway
+name: pathbridge
 
-identity-service:
-  build: ../Identity-Service
+# This file is intentionally self-contained. It expects the service repositories
+# to be sibling directories of Pathbridge-Deploy on the deployment host.
+x-postgres-environment: &postgres_environment
+  POSTGRES_USER: ${POSTGRES_USER}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
 
-job-discovery-service:
-  build: ../Job-Discovery-Service
+services:
+  gateway:
+    build: ../Api-Gateway
+    environment:
+      IDENTITY_SERVICE_URL: http://identity-service:8000
+      JOB_DISCOVERY_SERVICE_URL: http://job-discovery-service:8000
+      GAP_ANALYSIS_SERVICE_URL: http://gap-analysis-service:8000
+      LEARNING_PATHWAY_SERVICE_URL: http://learning-pathway-service:8000
+      INTERVIEW_COACH_SERVICE_URL: http://interview-coach-service:8000
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      JWT_ISSUER: ${JWT_ISSUER:-identity-service}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-job-platform-services}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      GATEWAY_USER_ID_HEADER: X-User-Id
+      CORS_ORIGINS: ${CORS_ORIGINS}
+    depends_on:
+      identity-service:
+        condition: service_healthy
+      job-discovery-service:
+        condition: service_healthy
+      gap-analysis-service:
+        condition: service_healthy
+      learning-pathway-service:
+        condition: service_healthy
+      interview-coach-service:
+        condition: service_healthy
+    networks: [pathbridge]
+    healthcheck: &app_healthcheck
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
 
-gap-analysis-service:
-  build: ../Gap-Analysis-Service
+  identity-service:
+    build: ../Identity-Service
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@identity-db:5432/identity_db
+      DATABASE_SCHEMA: identity
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      JWT_ISSUER: ${JWT_ISSUER:-identity-service}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-job-platform-services}
+      JWT_EXPIRATION_MINUTES: ${JWT_EXPIRATION_MINUTES:-60}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      DECOLECTA_BASE_URL: ${DECOLECTA_BASE_URL:-https://api.decolecta.com}
+      DECOLECTA_API_KEY: ${DECOLECTA_API_KEY}
+      DECOLECTA_TIMEOUT_SECONDS: ${DECOLECTA_TIMEOUT_SECONDS:-3}
+    depends_on:
+      identity-db:
+        condition: service_healthy
+    networks: [pathbridge]
+    healthcheck: *app_healthcheck
 
-learning-pathway-service:
-  build: ../Learning-Pathway-Service
+  job-discovery-service:
+    build: ../Job-Discovery-Service
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@job-discovery-db:5432/job_discovery_db
+      DATABASE_SCHEMA: job_discovery
+      JOOBLE_API_KEY: ${JOOBLE_API_KEY}
+      JOOBLE_BASE_URL: ${JOOBLE_BASE_URL:-https://pe.jooble.org/api}
+      GATEWAY_USER_ID_HEADER: X-User-Id
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+    depends_on:
+      job-discovery-db:
+        condition: service_healthy
+    networks: [pathbridge]
+    healthcheck: *app_healthcheck
 
-interview-coach-service:
-  build: ../Interview-Coach-Service
+  gap-analysis-service:
+    build: ../Gap-Analysis-Service
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@gap-analysis-db:5432/gap_analysis_db
+      DATABASE_SCHEMA: gap_analysis
+      IDENTITY_SERVICE_URL: http://identity-service:8000
+      JOB_DISCOVERY_SERVICE_URL: http://job-discovery-service:8000
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-qwen/qwen3.8-27b}
+      GATEWAY_USER_ID_HEADER: X-User-Id
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+    depends_on:
+      identity-service:
+        condition: service_healthy
+      job-discovery-service:
+        condition: service_healthy
+      gap-analysis-db:
+        condition: service_healthy
+    networks: [pathbridge]
+    healthcheck: *app_healthcheck
+
+  learning-pathway-service:
+    build: ../Learning-Pathway-Service
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@learning-pathway-db:5432/learning_pathway_db
+      DATABASE_SCHEMA: learning_pathway
+      IDENTITY_SERVICE_URL: http://identity-service:8000
+      GAP_ANALYSIS_SERVICE_URL: http://gap-analysis-service:8000
+      YOUTUBE_DATA_API_KEY: ${YOUTUBE_DATA_API_KEY}
+      GATEWAY_USER_ID_HEADER: X-User-Id
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+    depends_on:
+      identity-service:
+        condition: service_healthy
+      gap-analysis-service:
+        condition: service_healthy
+      learning-pathway-db:
+        condition: service_healthy
+    networks: [pathbridge]
+    healthcheck: *app_healthcheck
+
+  interview-coach-service:
+    build: ../Interview-Coach-Service
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@interview-coach-db:5432/interview_coach_db
+      DATABASE_SCHEMA: interview_coach
+      IDENTITY_SERVICE_URL: http://identity-service:8000
+      JOB_DISCOVERY_SERVICE_URL: http://job-discovery-service:8000
+      GAP_ANALYSIS_SERVICE_URL: http://gap-analysis-service:8000
+      LEARNING_PATHWAY_SERVICE_URL: http://learning-pathway-service:8000
+      INTERVIEW_GROQ_API_KEY: ${INTERVIEW_GROQ_API_KEY:-}
+      INTERVIEW_GROQ_MODEL: ${INTERVIEW_GROQ_MODEL:-qwen/qwen3.8-27b}
+      GATEWAY_USER_ID_HEADER: X-User-Id
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+    depends_on:
+      identity-service:
+        condition: service_healthy
+      job-discovery-service:
+        condition: service_healthy
+      gap-analysis-service:
+        condition: service_healthy
+      learning-pathway-service:
+        condition: service_healthy
+      interview-coach-db:
+        condition: service_healthy
+    networks: [pathbridge]
+    healthcheck: *app_healthcheck
+
+  identity-db:
+    image: postgres:16-alpine
+    environment:
+      <<: *postgres_environment
+      POSTGRES_DB: identity_db
+    volumes: [identity-db-data:/var/lib/postgresql/data]
+    networks: [pathbridge]
+    healthcheck: &postgres_healthcheck
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+  job-discovery-db:
+    image: postgres:16-alpine
+    environment:
+      <<: *postgres_environment
+      POSTGRES_DB: job_discovery_db
+    volumes: [job-discovery-db-data:/var/lib/postgresql/data]
+    networks: [pathbridge]
+    healthcheck: *postgres_healthcheck
+
+  gap-analysis-db:
+    image: postgres:16-alpine
+    environment:
+      <<: *postgres_environment
+      POSTGRES_DB: gap_analysis_db
+    volumes: [gap-analysis-db-data:/var/lib/postgresql/data]
+    networks: [pathbridge]
+    healthcheck: *postgres_healthcheck
+
+  learning-pathway-db:
+    image: postgres:16-alpine
+    environment:
+      <<: *postgres_environment
+      POSTGRES_DB: learning_pathway_db
+    volumes: [learning-pathway-db-data:/var/lib/postgresql/data]
+    networks: [pathbridge]
+    healthcheck: *postgres_healthcheck
+
+  interview-coach-db:
+    image: postgres:16-alpine
+    environment:
+      <<: *postgres_environment
+      POSTGRES_DB: interview_coach_db
+    volumes: [interview-coach-db-data:/var/lib/postgresql/data]
+    networks: [pathbridge]
+    healthcheck: *postgres_healthcheck
+
+networks:
+  pathbridge:
+    driver: bridge
+
+volumes:
+  identity-db-data:
+  job-discovery-db-data:
+  gap-analysis-db-data:
+  learning-pathway-db-data:
+  interview-coach-db-data:
