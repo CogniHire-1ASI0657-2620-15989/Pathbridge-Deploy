@@ -18,18 +18,3 @@ services:
 
   interview-coach-service:
     restart: unless-stopped
-
-  identity-db:
-    restart: unless-stopped
-
-  job-discovery-db:
-    restart: unless-stopped
-
-  gap-analysis-db:
-    restart: unless-stopped
-
-  learning-pathway-db:
-    restart: unless-stopped
-
-  interview-coach-db:
-    restart: unless-stopped

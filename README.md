@@ -29,17 +29,26 @@ The Compose build contexts use relative paths. Clone the repositories as sibling
    chmod 600 .env
    ```
 
-3. Replace every `replace-with-...` value. `POSTGRES_PASSWORD`,
+3. Download the RDS CA bundle to the deployment directory:
+
+   ```bash
+   mkdir -p certs
+   curl -fsSLo certs/rds-global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
+   chmod 644 certs/rds-global-bundle.pem
+   ```
+
+4. Replace every `replace-with-...` value. `RDS_PASSWORD`,
    `JWT_SECRET_KEY`, `INTERNAL_API_KEY`, Decolecta, Jooble and YouTube keys are required.
-4. Set `CORS_ORIGINS` to the frontend's exact origin.
-5. Validate and start:
+   `RDS_PASSWORD` must be URL-safe (letters, digits, underscores and hyphens only).
+5. Set `CORS_ORIGINS` to the frontend's exact origin.
+6. Validate and start:
 
    ```bash
    docker compose -f docker-compose.yml -f docker-compose.production.yml --env-file .env config --quiet
    docker compose -f docker-compose.yml -f docker-compose.production.yml --env-file .env up -d --build
    ```
 
-6. Verify the service state and Gateway:
+7. Verify the service state and Gateway:
 
    ```bash
    docker compose -f docker-compose.yml -f docker-compose.production.yml ps
@@ -51,10 +60,13 @@ The initial public endpoint is port `8080`. Add Caddy or Nginx and HTTPS before 
 ## Data and network boundaries
 
 - Only `gateway` publishes a host port.
-- All PostgreSQL instances live solely on the internal Docker network.
-- Named volumes persist the five PostgreSQL databases across container recreation.
-- `docker compose down -v` deletes all database data; do not use it on the server.
-- Back up PostgreSQL before deployments that contain migrations.
+- PostgreSQL lives in a private Amazon RDS instance. Only the EC2 security group
+  is allowed to connect to it on port 5432.
+- Every service owns a distinct logical RDS database: `identity_db`,
+  `job_discovery_db`, `gap_analysis_db`, `learning_pathway_db`, and
+  `interview_coach_db`. Each service's migrations manage its own schema.
+- RDS backups and migrations must be verified before a deployment that changes
+  persistent data.
 
 ## Deploying one service change
 

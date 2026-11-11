@@ -1,10 +1,8 @@
 name: pathbridge
 
-# This file is intentionally self-contained. It expects the service repositories
-# to be sibling directories of Pathbridge-Deploy on the deployment host.
-x-postgres-environment: &postgres_environment
-  POSTGRES_USER: ${POSTGRES_USER}
-  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+# This file expects the service repositories to be sibling directories of
+# Pathbridge-Deploy on the deployment host. PostgreSQL is supplied by RDS.
+x-rds-ca-volume: &rds_ca_volume ./certs/rds-global-bundle.pem:/certs/rds-global-bundle.pem:ro
 
 services:
   gateway:
@@ -43,7 +41,7 @@ services:
   identity-service:
     build: ../Identity-Service
     environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@identity-db:5432/identity_db
+      DATABASE_URL: postgresql+psycopg://${RDS_USERNAME}:${RDS_PASSWORD}@${RDS_HOST}:${RDS_PORT:-5432}/identity_db?sslmode=verify-full&sslrootcert=/certs/rds-global-bundle.pem
       DATABASE_SCHEMA: identity
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       JWT_ISSUER: ${JWT_ISSUER:-identity-service}
@@ -53,31 +51,27 @@ services:
       DECOLECTA_BASE_URL: ${DECOLECTA_BASE_URL:-https://api.decolecta.com}
       DECOLECTA_API_KEY: ${DECOLECTA_API_KEY}
       DECOLECTA_TIMEOUT_SECONDS: ${DECOLECTA_TIMEOUT_SECONDS:-3}
-    depends_on:
-      identity-db:
-        condition: service_healthy
+    volumes: [*rds_ca_volume]
     networks: [pathbridge]
     healthcheck: *app_healthcheck
 
   job-discovery-service:
     build: ../Job-Discovery-Service
     environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@job-discovery-db:5432/job_discovery_db
+      DATABASE_URL: postgresql+psycopg://${RDS_USERNAME}:${RDS_PASSWORD}@${RDS_HOST}:${RDS_PORT:-5432}/job_discovery_db?sslmode=verify-full&sslrootcert=/certs/rds-global-bundle.pem
       DATABASE_SCHEMA: job_discovery
       JOOBLE_API_KEY: ${JOOBLE_API_KEY}
       JOOBLE_BASE_URL: ${JOOBLE_BASE_URL:-https://pe.jooble.org/api}
       GATEWAY_USER_ID_HEADER: X-User-Id
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
-    depends_on:
-      job-discovery-db:
-        condition: service_healthy
+    volumes: [*rds_ca_volume]
     networks: [pathbridge]
     healthcheck: *app_healthcheck
 
   gap-analysis-service:
     build: ../Gap-Analysis-Service
     environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@gap-analysis-db:5432/gap_analysis_db
+      DATABASE_URL: postgresql+psycopg://${RDS_USERNAME}:${RDS_PASSWORD}@${RDS_HOST}:${RDS_PORT:-5432}/gap_analysis_db?sslmode=verify-full&sslrootcert=/certs/rds-global-bundle.pem
       DATABASE_SCHEMA: gap_analysis
       IDENTITY_SERVICE_URL: http://identity-service:8000
       JOB_DISCOVERY_SERVICE_URL: http://job-discovery-service:8000
@@ -90,15 +84,14 @@ services:
         condition: service_healthy
       job-discovery-service:
         condition: service_healthy
-      gap-analysis-db:
-        condition: service_healthy
+    volumes: [*rds_ca_volume]
     networks: [pathbridge]
     healthcheck: *app_healthcheck
 
   learning-pathway-service:
     build: ../Learning-Pathway-Service
     environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@learning-pathway-db:5432/learning_pathway_db
+      DATABASE_URL: postgresql+psycopg://${RDS_USERNAME}:${RDS_PASSWORD}@${RDS_HOST}:${RDS_PORT:-5432}/learning_pathway_db?sslmode=verify-full&sslrootcert=/certs/rds-global-bundle.pem
       DATABASE_SCHEMA: learning_pathway
       IDENTITY_SERVICE_URL: http://identity-service:8000
       GAP_ANALYSIS_SERVICE_URL: http://gap-analysis-service:8000
@@ -110,15 +103,14 @@ services:
         condition: service_healthy
       gap-analysis-service:
         condition: service_healthy
-      learning-pathway-db:
-        condition: service_healthy
+    volumes: [*rds_ca_volume]
     networks: [pathbridge]
     healthcheck: *app_healthcheck
 
   interview-coach-service:
     build: ../Interview-Coach-Service
     environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@interview-coach-db:5432/interview_coach_db
+      DATABASE_URL: postgresql+psycopg://${RDS_USERNAME}:${RDS_PASSWORD}@${RDS_HOST}:${RDS_PORT:-5432}/interview_coach_db?sslmode=verify-full&sslrootcert=/certs/rds-global-bundle.pem
       DATABASE_SCHEMA: interview_coach
       IDENTITY_SERVICE_URL: http://identity-service:8000
       JOB_DISCOVERY_SERVICE_URL: http://job-discovery-service:8000
@@ -137,67 +129,10 @@ services:
         condition: service_healthy
       learning-pathway-service:
         condition: service_healthy
-      interview-coach-db:
-        condition: service_healthy
+    volumes: [*rds_ca_volume]
     networks: [pathbridge]
     healthcheck: *app_healthcheck
-
-  identity-db:
-    image: postgres:16-alpine
-    environment:
-      <<: *postgres_environment
-      POSTGRES_DB: identity_db
-    volumes: [identity-db-data:/var/lib/postgresql/data]
-    networks: [pathbridge]
-    healthcheck: &postgres_healthcheck
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 10s
-  job-discovery-db:
-    image: postgres:16-alpine
-    environment:
-      <<: *postgres_environment
-      POSTGRES_DB: job_discovery_db
-    volumes: [job-discovery-db-data:/var/lib/postgresql/data]
-    networks: [pathbridge]
-    healthcheck: *postgres_healthcheck
-
-  gap-analysis-db:
-    image: postgres:16-alpine
-    environment:
-      <<: *postgres_environment
-      POSTGRES_DB: gap_analysis_db
-    volumes: [gap-analysis-db-data:/var/lib/postgresql/data]
-    networks: [pathbridge]
-    healthcheck: *postgres_healthcheck
-
-  learning-pathway-db:
-    image: postgres:16-alpine
-    environment:
-      <<: *postgres_environment
-      POSTGRES_DB: learning_pathway_db
-    volumes: [learning-pathway-db-data:/var/lib/postgresql/data]
-    networks: [pathbridge]
-    healthcheck: *postgres_healthcheck
-
-  interview-coach-db:
-    image: postgres:16-alpine
-    environment:
-      <<: *postgres_environment
-      POSTGRES_DB: interview_coach_db
-    volumes: [interview-coach-db-data:/var/lib/postgresql/data]
-    networks: [pathbridge]
-    healthcheck: *postgres_healthcheck
 
 networks:
   pathbridge:
     driver: bridge
-
-volumes:
-  identity-db-data:
-  job-discovery-db-data:
-  gap-analysis-db-data:
-  learning-pathway-db-data:
-  interview-coach-db-data:
