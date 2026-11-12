@@ -55,7 +55,8 @@ The Compose build contexts use relative paths. Clone the repositories as sibling
    curl -f http://127.0.0.1:8080/health
    ```
 
-The initial public endpoint is port `8080`. Add Caddy or Nginx and HTTPS before exposing the system to end users.
+The initial public endpoint is port `80`. Configure TLS before handling real user
+credentials over the public internet.
 
 ## Data and network boundaries
 
