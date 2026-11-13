@@ -16,5 +16,11 @@ services:
   learning-pathway-service:
     restart: unless-stopped
 
+  learning-pathway-worker:
+    restart: unless-stopped
+
   interview-coach-service:
+    restart: unless-stopped
+
+  rabbitmq:
     restart: unless-stopped

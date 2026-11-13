@@ -64,6 +64,13 @@ services:
       JOOBLE_BASE_URL: ${JOOBLE_BASE_URL:-https://pe.jooble.org/api}
       GATEWAY_USER_ID_HEADER: X-User-Id
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     volumes: [*rds_ca_volume]
     networks: [pathbridge]
     healthcheck: *app_healthcheck
@@ -79,14 +86,41 @@ services:
       GROQ_MODEL: ${GROQ_MODEL:-qwen/qwen3.8-27b}
       GATEWAY_USER_ID_HEADER: X-User-Id
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
     depends_on:
       identity-service:
         condition: service_healthy
       job-discovery-service:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     volumes: [*rds_ca_volume]
     networks: [pathbridge]
     healthcheck: *app_healthcheck
+
+  learning-pathway-worker:
+    build: ../Learning-Pathway-Service
+    command: ["python", "-m", "app.workers.gap_report_consumer"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://${RDS_USERNAME}:${RDS_PASSWORD}@${RDS_HOST}:${RDS_PORT:-5432}/learning_pathway_db?sslmode=verify-full&sslrootcert=/certs/rds-global-bundle.pem
+      DATABASE_SCHEMA: learning_pathway
+      IDENTITY_SERVICE_URL: http://identity-service:8000
+      GAP_ANALYSIS_SERVICE_URL: http://gap-analysis-service:8000
+      YOUTUBE_DATA_API_KEY: ${YOUTUBE_DATA_API_KEY}
+      GATEWAY_USER_ID_HEADER: X-User-Id
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    volumes: [*rds_ca_volume]
+    networks: [pathbridge]
 
   learning-pathway-service:
     build: ../Learning-Pathway-Service
@@ -98,10 +132,16 @@ services:
       YOUTUBE_DATA_API_KEY: ${YOUTUBE_DATA_API_KEY}
       GATEWAY_USER_ID_HEADER: X-User-Id
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
     depends_on:
       identity-service:
         condition: service_healthy
       gap-analysis-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     volumes: [*rds_ca_volume]
     networks: [pathbridge]
@@ -133,6 +173,40 @@ services:
     networks: [pathbridge]
     healthcheck: *app_healthcheck
 
+  redis:
+    image: redis:7-alpine
+    command: ["sh", "-c", "exec redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --requirepass \"$$REDIS_PASSWORD\""]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    volumes:
+      - redis-data:/data
+    networks: [pathbridge]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports:
+      - "127.0.0.1:15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks: [pathbridge]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
 networks:
   pathbridge:
     driver: bridge
+
+volumes:
+  redis-data:
+  rabbitmq-data:
